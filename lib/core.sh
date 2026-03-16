@@ -96,6 +96,17 @@ is_wireguard_installed() {
 
 # Check if WireGuard is running
 is_wireguard_running() {
+    # Check if wg show works (most reliable)
+    if wg show "${WG_INTERFACE}" > /dev/null 2>&1; then
+        return 0
+    fi
+    
+    # Check if systemd service is active
+    if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}" 2>/dev/null; then
+        return 0
+    fi
+    
+    # Fallback: check interface state
     if [[ -f "/sys/class/net/${WG_INTERFACE}/operstate" ]]; then
         local state=$(cat "/sys/class/net/${WG_INTERFACE}/operstate" 2>/dev/null)
         [[ "${state}" == "up" ]]
