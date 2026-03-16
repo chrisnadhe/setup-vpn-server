@@ -289,16 +289,34 @@ check_server_health() {
         echo -e "${GREEN}✓ Enabled${NC}"
     else
         echo -e "${RED}✗ Disabled${NC}"
+        echo -e "  ${DIM}Fix: echo 1 > /proc/sys/net/ipv4/ip_forward${NC}"
         issues=$((issues + 1))
     fi
     
     # Check firewall rules
     echo -n "Firewall Rules: "
+    local fw_ok=false
+    
+    # Check INPUT chain for port
     if iptables -L INPUT -n 2>/dev/null | grep -q "${WG_PORT}"; then
+        fw_ok=true
+    fi
+    
+    # Check FORWARD chain for WireGuard interface
+    if iptables -L FORWARD -n 2>/dev/null | grep -q "${WG_INTERFACE}"; then
+        fw_ok=true
+    fi
+    
+    # Check if UFW is active and allows the port
+    if command_exists ufw && ufw status 2>/dev/null | grep -q "${WG_PORT}/udp"; then
+        fw_ok=true
+    fi
+    
+    if [[ "${fw_ok}" == "true" ]]; then
         echo -e "${GREEN}✓ Configured${NC}"
     else
-        echo -e "${YELLOW}⚠ Port ${WG_PORT} not found in rules${NC}"
-        issues=$((issues + 1))
+        echo -e "${YELLOW}⚠ Port ${WG_PORT} may not be allowed${NC}"
+        echo -e "  ${DIM}Fix: ufw allow ${WG_PORT}/udp${NC}"
     fi
     
     # Check DNS resolution
@@ -352,9 +370,63 @@ check_server_health() {
         print_success "All checks passed! Server is healthy."
     else
         print_warning "Found ${issues} issue(s). Review the output above."
+        echo ""
+        if confirm_action "Attempt to fix issues automatically?"; then
+            fix_server_issues
+        fi
     fi
     
     return ${issues}
+}
+
+# Fix common server issues
+fix_server_issues() {
+    print_info "Attempting to fix issues..."
+    
+    # Fix IP forwarding
+    local forwarding=$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null)
+    if [[ "${forwarding}" != "1" ]]; then
+        print_info "Enabling IP forwarding..."
+        echo 1 > /proc/sys/net/ipv4/ip_forward
+        if ! grep -q "net.ipv4.ip_forward=1" /etc/sysctl.conf; then
+            echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+        fi
+        print_success "IP forwarding enabled"
+    fi
+    
+    # Fix firewall rules
+    if command_exists ufw; then
+        print_info "Configuring UFW..."
+        ufw allow "${WG_PORT}/udp" > /dev/null 2>&1
+        ufw allow OpenSSH > /dev/null 2>&1
+        print_success "UFW rules added"
+    elif command_exists iptables; then
+        print_info "Configuring iptables..."
+        iptables -A INPUT -p udp --dport "${WG_PORT}" -j ACCEPT 2>/dev/null
+        iptables -A FORWARD -i "${WG_INTERFACE}" -j ACCEPT 2>/dev/null
+        iptables -A FORWARD -o "${WG_INTERFACE}" -j ACCEPT 2>/dev/null
+        iptables -t nat -A POSTROUTING -o "${SERVER_PUB_NIC}" -j MASQUERADE 2>/dev/null
+        
+        # Save rules
+        if command_exists iptables-save; then
+            iptables-save > /etc/iptables.rules 2>/dev/null
+        fi
+        print_success "iptables rules added"
+    fi
+    
+    # Restart WireGuard if not running
+    if ! is_wireguard_running; then
+        print_info "Starting WireGuard..."
+        systemctl restart "wg-quick@${WG_INTERFACE}" 2>/dev/null
+        sleep 2
+        if is_wireguard_running; then
+            print_success "WireGuard started"
+        else
+            print_warning "WireGuard still not running. Check logs."
+        fi
+    fi
+    
+    print_success "Fix attempts completed"
 }
 
 # Test VPN connectivity

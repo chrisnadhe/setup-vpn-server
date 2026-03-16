@@ -451,19 +451,20 @@ server_management_menu() {
         
         echo "  1) Server Status"
         echo "  2) Health Check"
-        echo "  3) Test Connectivity"
-        echo "  4) System Information"
-        echo "  5) View Logs"
-        echo "  6) Backup & Restore"
-        echo "  7) Scheduled Tasks"
-        echo "  8) Check Updates"
-        echo "  9) Restart WireGuard"
-        echo " 10) Reboot Server"
+        echo "  3) Fix Common Issues"
+        echo "  4) Test Connectivity"
+        echo "  5) System Information"
+        echo "  6) View Logs"
+        echo "  7) Backup & Restore"
+        echo "  8) Scheduled Tasks"
+        echo "  9) Check Updates"
+        echo " 10) Restart WireGuard"
+        echo " 11) Reboot Server"
         echo ""
         echo "  0) Back"
         echo ""
         
-        read -rp "$(echo -e "${CYAN}Select option [0-10]: ${NC}")" choice
+        read -rp "$(echo -e "${CYAN}Select option [0-11]: ${NC}")" choice
         
         case "${choice}" in
             1)
@@ -477,34 +478,38 @@ server_management_menu() {
                 press_any_key
                 ;;
             3)
-                test_vpn_connectivity
+                fix_server_issues
                 press_any_key
                 ;;
             4)
-                show_system_info
+                test_vpn_connectivity
                 press_any_key
                 ;;
             5)
-                menu_view_logs
+                show_system_info
+                press_any_key
                 ;;
             6)
-                menu_backup_restore
+                menu_view_logs
                 ;;
             7)
+                menu_backup_restore
+                ;;
+            8)
                 get_scheduled_tasks
                 press_any_key
                 ;;
-            8)
+            9)
                 check_updates
                 press_any_key
                 ;;
-            9)
+            10)
                 if confirm_action "Restart WireGuard?"; then
                     restart_wireguard
                 fi
                 press_any_key
                 ;;
-            10)
+            11)
                 if confirm_action "Reboot server?"; then
                     print_info "Rebooting..."
                     sleep 2
