@@ -52,10 +52,9 @@ send_telegram_message() {
     local text="$2"
     local parse_mode="${3:-HTML}"
     
-    # Escape special characters for HTML
-    if [[ "${parse_mode}" == "HTML" ]]; then
-        text=$(echo "${text}" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')
-    fi
+    # Don't escape - messages are already properly formatted
+    # Telegram HTML mode supports: <b>, <i>, <code>, <pre>, <a>, <u>, <s>, <tg-spoiler>
+    # Use &lt; and &gt; in message templates for literal < >
     
     local data=$(jq -n \
         --arg chat_id "${chat_id}" \
