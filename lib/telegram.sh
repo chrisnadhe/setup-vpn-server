@@ -52,15 +52,11 @@ send_telegram_message() {
     local text="$2"
     local parse_mode="${3:-HTML}"
     
-    # Don't escape - messages are already properly formatted
-    # Telegram HTML mode supports: <b>, <i>, <code>, <pre>, <a>, <u>, <s>, <tg-spoiler>
-    # Use &lt; and &gt; in message templates for literal < >
-    
-    local data=$(jq -n \
+    # Use jq with raw input to preserve HTML tags
+    local data=$(printf '%s' "${text}" | jq -R -s \
         --arg chat_id "${chat_id}" \
-        --arg text "${text}" \
         --arg parse_mode "${parse_mode}" \
-        '{chat_id: $chat_id, text: $text, parse_mode: $parse_mode}')
+        '{chat_id: $chat_id, text: ., parse_mode: $parse_mode}')
     
     telegram_api "sendMessage" "${data}" > /dev/null
 }
@@ -71,11 +67,10 @@ send_telegram_keyboard() {
     local text="$2"
     local keyboard="$3"  # JSON array of buttons
     
-    local data=$(jq -n \
+    local data=$(printf '%s' "${text}" | jq -R -s \
         --arg chat_id "${chat_id}" \
-        --arg text "${text}" \
         --argjson keyboard "${keyboard}" \
-        '{chat_id: $chat_id, text: $text, parse_mode: "HTML", reply_markup: {keyboard: $keyboard, resize_keyboard: true}}')
+        '{chat_id: $chat_id, text: ., parse_mode: "HTML", reply_markup: {keyboard: $keyboard, resize_keyboard: true}}')
     
     telegram_api "sendMessage" "${data}" > /dev/null
 }
@@ -86,11 +81,10 @@ send_telegram_inline_keyboard() {
     local text="$2"
     local keyboard="$3"
     
-    local data=$(jq -n \
+    local data=$(printf '%s' "${text}" | jq -R -s \
         --arg chat_id "${chat_id}" \
-        --arg text "${text}" \
         --argjson keyboard "${keyboard}" \
-        '{chat_id: $chat_id, text: $text, parse_mode: "HTML", reply_markup: {inline_keyboard: $keyboard}}')
+        '{chat_id: $chat_id, text: ., parse_mode: "HTML", reply_markup: {inline_keyboard: $keyboard}}')
     
     telegram_api "sendMessage" "${data}" > /dev/null
 }
