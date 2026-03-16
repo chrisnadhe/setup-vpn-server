@@ -189,6 +189,9 @@ process_telegram_command() {
         /qr)
             cmd_telegram_qr "${chat_id}" "${args}"
             ;;
+        /getconfig)
+            cmd_telegram_getconfig "${chat_id}" "${args}"
+            ;;
         /backup)
             cmd_telegram_backup "${chat_id}"
             ;;
@@ -237,6 +240,7 @@ cmd_telegram_help() {
 /userinfo &lt;name&gt; - User details
 /usage &lt;name&gt; - User usage stats
 /qr &lt;name&gt; - Get QR code for user
+/getconfig &lt;name&gt; - Download config file
 
 <b>Server Management:</b>
 /status - Server status
@@ -619,6 +623,47 @@ cmd_telegram_qr() {
     fi
 }
 
+# Command: /getconfig - Send config file as document
+cmd_telegram_getconfig() {
+    local chat_id="$1"
+    local username="$2"
+    
+    if [[ -z "${username}" ]]; then
+        send_telegram_message "${chat_id}" "❓ Usage: /getconfig &lt;username&gt;"
+        return
+    fi
+    
+    if ! user_exists "${username}"; then
+        send_telegram_message "${chat_id}" "❌ User <b>${username}</b> not found"
+        return
+    fi
+    
+    local config_file="${WG_USERS_DIR}/${username}/client.conf"
+    
+    if [[ ! -f "${config_file}" ]]; then
+        send_telegram_message "${chat_id}" "❌ Config file not found for <b>${username}</b>"
+        return
+    fi
+    
+    send_telegram_message "${chat_id}" "📄 Sending configuration file for <b>${username}</b>..."
+    
+    # Send config file as document
+    local response=$(curl -s -X POST "${TELEGRAM_API}${TELEGRAM_BOT_TOKEN}/sendDocument" \
+        -F "chat_id=${chat_id}" \
+        -F "document=@${config_file}" \
+        -F "caption=WireGuard config for ${username}")
+    
+    # Check if send was successful
+    local ok=$(echo "${response}" | jq -r '.ok' 2>/dev/null)
+    if [[ "${ok}" == "true" ]]; then
+        send_telegram_message "${chat_id}" "✅ Configuration file sent! Import it in your WireGuard client."
+    else
+        # Fallback: send as text message
+        local config_content=$(cat "${config_file}")
+        send_telegram_message "${chat_id}" "📄 <b>Config for ${username}</b> (copy and save as .conf):\n\n<code>${config_content}</code>"
+    fi
+}
+
 # Command: /backup
 cmd_telegram_backup() {
     local chat_id="$1"
@@ -666,6 +711,7 @@ cmd_telegram_menu() {
     local keyboard='[
         [{"text":"📊 Status","callback_data":"menu_status"},{"text":"👥 Users","callback_data":"menu_users"}],
         [{"text":"➕ Add User","callback_data":"menu_adduser"},{"text":"📈 Usage","callback_data":"menu_usage"}],
+        [{"text":"📄 Get Config","callback_data":"menu_getconfig"},{"text":"📱 QR Code","callback_data":"menu_qr"}],
         [{"text":"⚙️ Config","callback_data":"menu_config"},{"text":"💾 Backup","callback_data":"menu_backup"}],
         [{"text":"🔄 Restart","callback_data":"menu_restart"},{"text":"❓ Help","callback_data":"menu_help"}]
     ]'
@@ -706,6 +752,12 @@ process_callback_query() {
             ;;
         menu_help)
             cmd_telegram_help "${chat_id}"
+            ;;
+        menu_getconfig)
+            send_telegram_message "${chat_id}" "Send: /getconfig &lt;username&gt;"
+            ;;
+        menu_qr)
+            send_telegram_message "${chat_id}" "Send: /qr &lt;username&gt;"
             ;;
         deluser_confirm_*)
             local username="${data#deluser_confirm_}"
