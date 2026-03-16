@@ -491,34 +491,70 @@ uninstall() {
     
     # Create backup first
     print_info "Creating final backup..."
+    
+    # Ensure backup directory exists
+    mkdir -p "${WG_BACKUP_DIR}" 2>/dev/null || WG_BACKUP_DIR="/root/wg-backups"
+    mkdir -p "${WG_BACKUP_DIR}" 2>/dev/null
+    
     local backup_file="${WG_BACKUP_DIR}/final_backup_$(date +%Y%m%d_%H%M%S).tar.gz"
-    tar -czf "${backup_file}" -C /etc wireguard 2>/dev/null
-    tar -rf "${backup_file}" -C "${WG_MANAGER_DIR}" . 2>/dev/null
+    
+    # Create backup of WireGuard config
+    if [[ -d /etc/wireguard ]]; then
+        tar -czf "${backup_file}" -C /etc wireguard 2>/dev/null
+    fi
+    
+    # Add manager data to backup
+    if [[ -d "${WG_MANAGER_DIR}" ]]; then
+        if [[ -f "${backup_file}" ]]; then
+            tar -czf "${backup_file}.tmp" -C "${WG_MANAGER_DIR}" . 2>/dev/null
+            tar -czf "${backup_file}" --concatenate --file="${backup_file}" "${backup_file}.tmp" 2>/dev/null || true
+            rm -f "${backup_file}.tmp" 2>/dev/null
+        else
+            tar -czf "${backup_file}" -C "${WG_MANAGER_DIR}" . 2>/dev/null
+        fi
+    fi
+    
+    if [[ -f "${backup_file}" ]]; then
+        print_success "Backup created: ${backup_file}"
+    else
+        print_warning "Backup creation failed, continuing with uninstall..."
+    fi
+    
+    print_info "Stopping services..."
     
     # Stop services
-    systemctl stop "wg-quick@${WG_INTERFACE}" 2>/dev/null
-    systemctl disable "wg-quick@${WG_INTERFACE}" 2>/dev/null
-    systemctl stop wg-monitor 2>/dev/null
-    systemctl disable wg-monitor 2>/dev/null
+    systemctl stop "wg-quick@${WG_INTERFACE}" 2>/dev/null || true
+    systemctl disable "wg-quick@${WG_INTERFACE}" 2>/dev/null || true
+    systemctl stop wg-monitor 2>/dev/null || true
+    systemctl disable wg-monitor 2>/dev/null || true
+    systemctl stop wg-telegram 2>/dev/null || true
+    systemctl disable wg-telegram 2>/dev/null || true
+    
+    print_info "Removing packages..."
     
     # Remove packages
-    apt-get remove --purge -y wireguard wireguard-tools 2>/dev/null
+    apt-get remove --purge -y wireguard wireguard-tools 2>/dev/null || true
+    
+    print_info "Cleaning up configuration..."
     
     # Remove configurations
-    rm -rf /etc/wireguard
-    rm -rf "${WG_MANAGER_DIR}"
-    rm -f /etc/systemd/system/wg-monitor.service
-    rm -f /usr/local/bin/wg-manager
+    rm -rf /etc/wireguard 2>/dev/null || true
+    rm -rf "${WG_MANAGER_DIR}" 2>/dev/null || true
+    rm -f /etc/systemd/system/wg-monitor.service 2>/dev/null || true
+    rm -f /etc/systemd/system/wg-telegram.service 2>/dev/null || true
+    rm -f /usr/local/bin/wg-manager 2>/dev/null || true
     
     # Remove firewall rules
     if command_exists ufw; then
-        ufw delete allow "${WG_PORT}/udp" 2>/dev/null
+        ufw delete allow "${WG_PORT}/udp" 2>/dev/null || true
     fi
     
-    systemctl daemon-reload
+    systemctl daemon-reload 2>/dev/null || true
     
     print_success "WireGuard has been uninstalled"
-    print_info "Backup saved to: ${backup_file}"
+    if [[ -f "${backup_file}" ]]; then
+        print_info "Backup saved to: ${backup_file}"
+    fi
 }
 
 # Main
