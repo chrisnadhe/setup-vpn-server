@@ -205,7 +205,10 @@ process_telegram_command() {
             cmd_telegram_menu "${chat_id}"
             ;;
         *)
-            send_telegram_message "${chat_id}" "❓ Unknown command: ${command}\nType /help for available commands."
+            local unknown_msg="❓ Unknown command: ${command}
+
+Type /help for available commands."
+            send_telegram_message "${chat_id}" "${unknown_msg}"
             ;;
     esac
 }
@@ -332,7 +335,8 @@ cmd_telegram_users() {
             fi
         fi
         
-        message+="${status} <b>${username}</b> - ${ip}\n"
+        message+="${status} <b>${username}</b> - ${ip}
+"
     done < "${USER_DB}"
     
     send_telegram_message "${chat_id}" "${message}"
@@ -344,7 +348,7 @@ cmd_telegram_adduser() {
     local username="$2"
     
     if [[ -z "${username}" ]]; then
-        send_telegram_message "${chat_id}" "❓ Usage: /adduser &lt;username&gt;"
+        send_telegram_message "${chat_id}" "❓ Usage: /adduser <username>"
         return
     fi
     
@@ -354,9 +358,17 @@ cmd_telegram_adduser() {
     
     if [[ ${exit_code} -eq 0 ]]; then
         local ip=$(get_user_field "${username}" 2)
-        send_telegram_message "${chat_id}" "✅ User <b>${username}</b> created successfully!\nIP: ${ip}\n\nUse /qr ${username} to get QR code."
+        local message="✅ User <b>${username}</b> created successfully!
+
+IP: <code>${ip}</code>
+
+Use /qr ${username} to get QR code or /getconfig ${username} to download config."
+        send_telegram_message "${chat_id}" "${message}"
     else
-        send_telegram_message "${chat_id}" "❌ Failed to create user:\n${result}"
+        local message="❌ Failed to create user:
+
+${result}"
+        send_telegram_message "${chat_id}" "${message}"
     fi
 }
 
@@ -503,7 +515,8 @@ cmd_telegram_usage() {
                 done < "${log_file}"
             fi
             
-            message+="<b>${user}</b>: ↓$(bytes_to_human ${total_rx}) ↑$(bytes_to_human ${total_tx})\n"
+            message+="<b>${user}</b>: ↓$(bytes_to_human ${total_rx}) ↑$(bytes_to_human ${total_tx})
+"
         done < "${USER_DB}"
         
         send_telegram_message "${chat_id}" "${message}"
@@ -578,7 +591,10 @@ cmd_telegram_config() {
         
         send_telegram_message "${chat_id}" "${message}"
     else
-        send_telegram_message "${chat_id}" "⚙️ <b>Config Commands:</b>\n/config show - Show current config"
+        local config_help="⚙️ <b>Config Commands:</b>
+
+/config show - Show current config"
+        send_telegram_message "${chat_id}" "${config_help}"
     fi
 }
 
@@ -619,7 +635,10 @@ cmd_telegram_qr() {
     else
         # Fallback: send config as text
         local config_content=$(cat "${config_file}")
-        send_telegram_message "${chat_id}" "📱 <b>Config for ${username}</b>\n\n<code>${config_content}</code>"
+        local qr_fallback="📱 <b>Config for ${username}</b>
+
+<code>${config_content}</code>"
+        send_telegram_message "${chat_id}" "${qr_fallback}"
     fi
 }
 
@@ -660,7 +679,10 @@ cmd_telegram_getconfig() {
     else
         # Fallback: send as text message
         local config_content=$(cat "${config_file}")
-        send_telegram_message "${chat_id}" "📄 <b>Config for ${username}</b> (copy and save as .conf):\n\n<code>${config_content}</code>"
+        local config_fallback="📄 <b>Config for ${username}</b> (copy and save as .conf):
+
+<code>${config_content}</code>"
+        send_telegram_message "${chat_id}" "${config_fallback}"
     fi
 }
 
@@ -673,7 +695,10 @@ cmd_telegram_backup() {
     local backup_file=$(create_backup 2>/dev/null)
     
     if [[ -f "${backup_file}" ]]; then
-        send_telegram_message "${chat_id}" "✅ Backup created successfully!\nFile: $(basename "${backup_file}")"
+        local backup_msg="✅ Backup created successfully!
+
+File: <code>$(basename "${backup_file}")</code>"
+        send_telegram_message "${chat_id}" "${backup_msg}"
     else
         send_telegram_message "${chat_id}" "❌ Backup failed"
     fi
@@ -716,7 +741,10 @@ cmd_telegram_menu() {
         [{"text":"🔄 Restart","callback_data":"menu_restart"},{"text":"❓ Help","callback_data":"menu_help"}]
     ]'
     
-    send_telegram_inline_keyboard "${chat_id}" "🤖 <b>WireGuard Manager</b>\n\nSelect an action:" "${keyboard}"
+    local menu_msg="🤖 <b>WireGuard Manager</b>
+
+Select an action:"
+    send_telegram_inline_keyboard "${chat_id}" "${menu_msg}" "${keyboard}"
 }
 
 # Process callback query
