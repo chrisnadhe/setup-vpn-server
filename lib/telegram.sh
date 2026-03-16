@@ -743,40 +743,62 @@ start_telegram_bot() {
     print_info "Starting Telegram bot polling..."
     
     local offset=0
+    local offset_file="/tmp/wg_telegram_offset"
+    
+    # Load saved offset if exists
+    if [[ -f "${offset_file}" ]]; then
+        offset=$(cat "${offset_file}" 2>/dev/null || echo 0)
+    fi
     
     while true; do
         # Get updates
-        local updates=$(telegram_api "getUpdates?offset=${offset}&timeout=30")
+        local updates=$(telegram_api "getUpdates?offset=${offset}&timeout=30" 2>/dev/null)
         
-        # Process each update
-        echo "${updates}" | jq -c '.result[]' 2>/dev/null | while read -r update; do
-            local update_id=$(echo "${update}" | jq -r '.update_id')
-            offset=$((update_id + 1))
-            
-            # Check for message
-            local message=$(echo "${update}" | jq -r '.message // empty')
-            if [[ -n "${message}" ]]; then
-                local chat_id=$(echo "${message}" | jq -r '.chat.id')
-                local text=$(echo "${message}" | jq -r '.text // empty')
+        # Check if we got valid response
+        local ok=$(echo "${updates}" | jq -r '.ok' 2>/dev/null)
+        if [[ "${ok}" != "true" ]]; then
+            sleep 5
+            continue
+        fi
+        
+        # Get number of results
+        local result_count=$(echo "${updates}" | jq '.result | length' 2>/dev/null || echo 0)
+        
+        if [[ ${result_count} -gt 0 ]]; then
+            # Process each update using index to avoid subshell
+            for ((i=0; i<result_count; i++)); do
+                local update=$(echo "${updates}" | jq -c ".result[${i}]" 2>/dev/null)
                 
-                if [[ "${text}" == /* ]]; then
-                    local command=$(echo "${text}" | awk '{print $1}')
-                    local args=$(echo "${text}" | cut -d' ' -f2-)
+                # Get update_id and update offset
+                local update_id=$(echo "${update}" | jq -r '.update_id' 2>/dev/null)
+                offset=$((update_id + 1))
+                echo "${offset}" > "${offset_file}"
+                
+                # Check for message
+                local message=$(echo "${update}" | jq -r '.message // empty' 2>/dev/null)
+                if [[ -n "${message}" && "${message}" != "null" ]]; then
+                    local chat_id=$(echo "${update}" | jq -r '.message.chat.id' 2>/dev/null)
+                    local text=$(echo "${update}" | jq -r '.message.text // empty' 2>/dev/null)
                     
-                    process_telegram_command "${chat_id}" "${command}" "${args}"
+                    if [[ "${text}" == /* ]]; then
+                        local command=$(echo "${text}" | awk '{print $1}')
+                        local args=$(echo "${text}" | cut -d' ' -f2-)
+                        
+                        process_telegram_command "${chat_id}" "${command}" "${args}"
+                    fi
                 fi
-            fi
-            
-            # Check for callback query
-            local callback_query=$(echo "${update}" | jq -r '.callback_query // empty')
-            if [[ -n "${callback_query}" ]]; then
-                local callback_query_id=$(echo "${callback_query}" | jq -r '.id')
-                local chat_id=$(echo "${callback_query}" | jq -r '.message.chat.id')
-                local data=$(echo "${callback_query}" | jq -r '.data')
                 
-                process_callback_query "${callback_query_id}" "${chat_id}" "${data}"
-            fi
-        done
+                # Check for callback query
+                local callback_query=$(echo "${update}" | jq -r '.callback_query // empty' 2>/dev/null)
+                if [[ -n "${callback_query}" && "${callback_query}" != "null" ]]; then
+                    local callback_query_id=$(echo "${update}" | jq -r '.callback_query.id' 2>/dev/null)
+                    local chat_id=$(echo "${update}" | jq -r '.callback_query.message.chat.id' 2>/dev/null)
+                    local data=$(echo "${update}" | jq -r '.callback_query.data' 2>/dev/null)
+                    
+                    process_callback_query "${callback_query_id}" "${chat_id}" "${data}"
+                fi
+            done
+        fi
         
         sleep 1
     done
