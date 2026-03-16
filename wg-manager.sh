@@ -7,6 +7,7 @@ set -e
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MAIN_SCRIPT_DIR="${SCRIPT_DIR}"
 
 # Source libraries
 source "${SCRIPT_DIR}/lib/utils.sh"

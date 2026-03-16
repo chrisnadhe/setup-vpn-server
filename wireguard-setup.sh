@@ -7,6 +7,7 @@ set -e
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MAIN_SCRIPT_DIR="${SCRIPT_DIR}"
 
 # Source libraries
 source "${SCRIPT_DIR}/lib/utils.sh"
@@ -227,12 +228,18 @@ generate_server_keys() {
     # Create keys directory
     mkdir -p "${WG_KEYS_DIR}/server"
     chmod 700 "${WG_KEYS_DIR}"
+    chmod 700 "${WG_KEYS_DIR}/server"
+    
+    # Set secure umask for key generation
+    local old_umask=$(umask)
+    umask 077
     
     # Generate server keys
     wg genkey > "${WG_KEYS_DIR}/server/private.key"
-    cat "${WG_KEYS_DIR}/server/private.key" | wg pubkey > "${WG_KEYS_DIR}/server/public.key"
+    wg pubkey < "${WG_KEYS_DIR}/server/private.key" > "${WG_KEYS_DIR}/server/public.key"
     
-    chmod 600 "${WG_KEYS_DIR}/server/private.key"
+    # Restore umask
+    umask ${old_umask}
     
     print_success "Server keys generated"
 }

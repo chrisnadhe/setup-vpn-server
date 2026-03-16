@@ -2,9 +2,11 @@
 # Core Functions for WireGuard Manager
 # Configuration loading, initialization, and core operations
 
-# Script directory detection
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_DIR="$(dirname "${SCRIPT_DIR}")"
+# Script directory detection (only set if not already set)
+if [[ -z "${MAIN_SCRIPT_DIR}" ]]; then
+    MAIN_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+fi
+PROJECT_DIR="${MAIN_SCRIPT_DIR}"
 
 # Default configuration file
 DEFAULT_CONFIG="${PROJECT_DIR}/config/default.conf"
@@ -172,17 +174,23 @@ generate_keys() {
     local key_dir="${WG_KEYS_DIR}/${name}"
     
     mkdir -p "${key_dir}"
+    chmod 700 "${key_dir}"
+    
+    # Set secure umask for key generation
+    local old_umask=$(umask)
+    umask 077
     
     # Generate private key
     wg genkey > "${key_dir}/private.key"
-    chmod 600 "${key_dir}/private.key"
     
     # Generate public key from private key
-    cat "${key_dir}/private.key" | wg pubkey > "${key_dir}/public.key"
+    wg pubkey < "${key_dir}/private.key" > "${key_dir}/public.key"
     
     # Generate preshared key for additional security
     wg genpsk > "${key_dir}/preshared.key"
-    chmod 600 "${key_dir}/preshared.key"
+    
+    # Restore umask
+    umask ${old_umask}
     
     print_debug "Generated keys for ${name}"
 }
