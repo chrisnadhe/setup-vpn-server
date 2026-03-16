@@ -410,7 +410,7 @@ list_users() {
         # Get usage
         local usage=$(get_user_usage "${username}")
         
-        printf "%-20s %-15s %-22b %-12s %-15s\n" "${username}" "${ip}" "${status}" "${created}" "${usage}"
+        printf "%-20s %-15s %-22s %-12s %-15s\n" "${username}" "${ip}" "${status}" "${created}" "${usage}"
     done < "${USER_DB}"
     
     echo ""
@@ -587,8 +587,16 @@ import_user() {
 
 # Get user count
 get_user_count() {
-    local total=$(wc -l < "${USER_DB}" 2>/dev/null || echo 0)
-    local enabled=$(grep -c "|1|" "${USER_DB}" 2>/dev/null || echo 0)
+    local total=0
+    local enabled=0
+    
+    if [[ -f "${USER_DB}" && -s "${USER_DB}" ]]; then
+        total=$(wc -l < "${USER_DB}" 2>/dev/null | tr -d '[:space:]')
+        enabled=$(grep -c "|1|" "${USER_DB}" 2>/dev/null | tr -d '[:space:]')
+    fi
+    
+    total=${total:-0}
+    enabled=${enabled:-0}
     local disabled=$((total - enabled))
     
     echo "Total: ${total} | Enabled: ${enabled} | Disabled: ${disabled}"

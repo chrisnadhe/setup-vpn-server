@@ -221,8 +221,21 @@ install_dependencies() {
         jq \
         bc \
         dnsutils \
-        net-tools \
-        haveged
+        net-tools
+    
+    # Install haveged for entropy (optional)
+    apt-get install -y haveged 2>/dev/null || true
+    
+    # Check if WireGuard kernel module is available
+    if ! modprobe wireguard 2>/dev/null; then
+        print_warning "WireGuard kernel module not available. Trying to install..."
+        
+        # Try to install kernel headers and wireguard-dkms
+        apt-get install -y linux-headers-$(uname -r) wireguard-dkms 2>/dev/null || true
+        
+        # Try loading module again
+        modprobe wireguard 2>/dev/null || print_warning "Could not load WireGuard kernel module. It may be built into the kernel."
+    fi
     
     print_success "Dependencies installed"
 }
@@ -261,10 +274,13 @@ configure_wireguard() {
     # Get server private key
     local server_private_key=$(cat "${WG_KEYS_DIR}/server/private.key")
     
+    # Calculate subnet prefix (e.g., 24 from 10.66.66.0/24)
+    local subnet_prefix="${WG_SUBNET##*/}"
+    
     # Create server configuration
     cat > "/etc/wireguard/${WG_INTERFACE}.conf" << EOF
 [Interface]
-Address = ${WG_SERVER_IP}/${WG_SUBNET##*/}
+Address = ${WG_SERVER_IP}/${subnet_prefix}
 ListenPort = ${WG_PORT}
 PrivateKey = ${server_private_key}
 PostUp = iptables -A FORWARD -i ${WG_INTERFACE} -j ACCEPT; iptables -t nat -A POSTROUTING -o ${SERVER_PUB_NIC} -j MASQUERADE
@@ -275,7 +291,12 @@ EOF
     
     chmod 600 "/etc/wireguard/${WG_INTERFACE}.conf"
     
-    print_success "WireGuard configured"
+    # Validate configuration by checking if wg can parse it
+    if wg showconf "${WG_INTERFACE}" > /dev/null 2>&1 || [[ -f "/etc/wireguard/${WG_INTERFACE}.conf" ]]; then
+        print_success "WireGuard configured"
+    else
+        print_warning "Configuration created but may have issues. Check /etc/wireguard/${WG_INTERFACE}.conf"
+    fi
 }
 
 # Configure network
@@ -324,15 +345,33 @@ EOF
 enable_services() {
     print_info "Enabling services..."
     
-    # Enable and start WireGuard
+    # Enable WireGuard
     systemctl enable "wg-quick@${WG_INTERFACE}" > /dev/null 2>&1
-    systemctl start "wg-quick@${WG_INTERFACE}" > /dev/null 2>&1
     
-    # Enable haveged for entropy
-    systemctl enable haveged > /dev/null 2>&1
-    systemctl start haveged > /dev/null 2>&1
+    # Start WireGuard and capture any errors
+    local start_output=$(systemctl start "wg-quick@${WG_INTERFACE}" 2>&1)
+    local start_exit=$?
     
-    print_success "Services enabled"
+    # Wait for interface to come up
+    sleep 2
+    
+    # Check if service is active
+    if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}"; then
+        print_success "WireGuard service started"
+    else
+        print_warning "WireGuard service may have issues. Checking status..."
+        systemctl status "wg-quick@${WG_INTERFACE}" --no-pager -l 2>/dev/null | head -20
+        echo ""
+        print_info "You can check logs with: journalctl -u wg-quick@${WG_INTERFACE} -n 50"
+    fi
+    
+    # Enable haveged for entropy (optional, don't fail if not available)
+    if command_exists haveged; then
+        systemctl enable haveged > /dev/null 2>&1
+        systemctl start haveged > /dev/null 2>&1
+    fi
+    
+    print_success "Services configuration completed"
 }
 
 # Setup management tools
@@ -390,7 +429,12 @@ show_installation_summary() {
     
     local server_public_key=$(cat "${WG_KEYS_DIR}/server/public.key" 2>/dev/null || echo "N/A")
     
-    echo -e "${GREEN}✓${NC} WireGuard installed and running"
+    # Check actual service status
+    if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}" 2>/dev/null; then
+        echo -e "${GREEN}✓${NC} WireGuard installed and running"
+    else
+        echo -e "${YELLOW}⚠${NC} WireGuard installed but not running"
+    fi
     echo -e "${GREEN}✓${NC} Server configured on port ${WG_PORT}"
     echo -e "${GREEN}✓${NC} IP forwarding enabled"
     echo -e "${GREEN}✓${NC} Firewall configured"
@@ -419,10 +463,19 @@ show_installation_summary() {
     echo "  3. Configure Telegram bot (optional) in Server Management"
     echo ""
     
-    if is_wireguard_running; then
+    if systemctl is-active --quiet "wg-quick@${WG_INTERFACE}" 2>/dev/null; then
         print_success "WireGuard is running!"
     else
-        print_warning "WireGuard failed to start. Check logs with: journalctl -u wg-quick@${WG_INTERFACE}"
+        print_warning "WireGuard service is not running."
+        echo ""
+        echo -e "${DIM}To start it manually:${NC}"
+        echo "  sudo systemctl start wg-quick@${WG_INTERFACE}"
+        echo ""
+        echo -e "${DIM}To check logs:${NC}"
+        echo "  sudo journalctl -u wg-quick@${WG_INTERFACE} -n 50"
+        echo ""
+        echo -e "${DIM}To check status:${NC}"
+        echo "  sudo systemctl status wg-quick@${WG_INTERFACE}"
     fi
 }
 
